@@ -29,6 +29,16 @@ _QUEUE: asyncio.Queue = asyncio.Queue(maxsize=10_000)
 _WORKERS: list[asyncio.Task] = []
 _DIGEST_TASK: asyncio.Task | None = None
 
+# Lightweight request stats so we can tell "nothing arrived" from "arrived but
+# rejected". Survives until redeploy (in-memory, like the queue).
+_STATS = {"accepted": 0, "auth_failures": 0, "bad_json": 0,
+          "last_hit_ts": None, "last_auth_failure_ts": None}
+
+
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
+
 
 async def _worker(worker_id: int) -> None:
     log.info("worker %d started", worker_id)
@@ -71,7 +81,8 @@ async def _startup() -> None:
 
 @app.get("/health")
 async def health() -> JSONResponse:
-    return JSONResponse({"status": "ok", "queue_depth": _QUEUE.qsize(), **store.counts()})
+    return JSONResponse({"status": "ok", "queue_depth": _QUEUE.qsize(),
+                         "requests": dict(_STATS), **store.counts()})
 
 
 @app.get("/debug/recent")
@@ -96,14 +107,23 @@ async def debug_recent(token: str = Query(default="")) -> JSONResponse:
 
 @app.post("/webhooks/rb2b")
 async def rb2b_webhook(request: Request, token: str = Query(default="")) -> Response:
+    src = request.client.host if request.client else "?"
+    _STATS["last_hit_ts"] = _now_iso()
+
     # 1) auth: single self-contained URL, token in query param (addendum §3).
     if not config.RB2B_WEBHOOK_TOKEN or token != config.RB2B_WEBHOOK_TOKEN:
+        _STATS["auth_failures"] += 1
+        _STATS["last_auth_failure_ts"] = _now_iso()
+        log.warning("401 rejected webhook from %s (token_present=%s, token_matches=%s)",
+                    src, bool(token), token == config.RB2B_WEBHOOK_TOKEN)
         return JSONResponse({"error": "invalid token"}, status_code=401)
 
     # 2) validate: must be a JSON object.
     try:
         payload = await request.json()
     except Exception:
+        _STATS["bad_json"] += 1
+        log.warning("400 bad JSON on webhook from %s", src)
         return JSONResponse({"error": "invalid JSON"}, status_code=400)
     if not isinstance(payload, dict):
         return JSONResponse({"error": "expected a JSON object"}, status_code=400)
@@ -116,4 +136,6 @@ async def rb2b_webhook(request: Request, token: str = Query(default="")) -> Resp
         log.error("queue full, shedding payload for %s", payload.get("Company Name"))
         return JSONResponse({"status": "queued_full"}, status_code=200)
 
+    _STATS["accepted"] += 1
+    log.info("accepted webhook from %s (company=%r)", src, payload.get("Company Name"))
     return JSONResponse({"status": "accepted"}, status_code=200)
