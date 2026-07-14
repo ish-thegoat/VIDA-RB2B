@@ -115,6 +115,19 @@ async def debug_slack_test(token: str = Query(default="")) -> JSONResponse:
     return JSONResponse(result, status_code=200 if result.get("ok") else 502)
 
 
+@app.get("/debug/flush-digest")
+async def debug_flush_digest(token: str = Query(default="")) -> JSONResponse:
+    """Token-gated: post the staged-lead digest now instead of waiting for the
+    15-min timer (for test drives / on-demand review)."""
+    if not config.RB2B_WEBHOOK_TOKEN or token != config.RB2B_WEBHOOK_TOKEN:
+        return JSONResponse({"error": "invalid token"}, status_code=401)
+    try:
+        sent = await asyncio.to_thread(slack.flush_digest)
+        return JSONResponse({"sent": sent, "channel": config.SLACK_CHANNEL})
+    except Exception as e:
+        return JSONResponse({"sent": 0, "error": str(e)[:200]}, status_code=502)
+
+
 @app.post("/webhooks/rb2b")
 async def rb2b_webhook(request: Request, token: str = Query(default="")) -> Response:
     src = request.client.host if request.client else "?"
