@@ -123,6 +123,43 @@ async def debug_slack_test(token: str = Query(default="")) -> JSONResponse:
     return JSONResponse(result, status_code=200 if result.get("ok") else 502)
 
 
+_SAMPLE_LEADS = [
+    {"Company Name": "ServiceTitan", "First Name": "Marcus", "Last Name": "Lee",
+     "Title": "VP of Product", "Business Email": "marcus.lee@servicetitan.com",
+     "Website": "https://www.servicetitan.com", "Industry": "Vertical SaaS",
+     "Employee Count": "1000-5000", "City": "Glendale", "State": "CA", "Zipcode": "91203",
+     "Seen At": "2026-07-15T16:00:00Z", "LinkedIn URL": "https://www.linkedin.com/company/servicetitan/",
+     "Captured URL": "https://vida.io/pricing", "Tags": "Hot Pages, ICP"},
+    {"Company Name": "TaskUs", "First Name": "Jordan", "Last Name": "Ellis",
+     "Title": "VP of Operations", "Business Email": "jordan.ellis@taskus.com",
+     "Website": "https://www.taskus.com", "Industry": "BPO / Call Center",
+     "Employee Count": "5000+", "City": "New Braunfels", "State": "TX", "Zipcode": "78130",
+     "Seen At": "2026-07-15T16:05:00Z", "LinkedIn URL": "https://www.linkedin.com/company/taskus/",
+     "Captured URL": "https://vida.io/land/ai-for-call-centers", "Tags": "ICP"},
+]
+
+
+@app.get("/debug/sample-copy")
+async def debug_sample_copy(token: str = Query(default="")) -> JSONResponse:
+    """Token-gated: generate copy for a couple of real sample companies and post the
+    FULL Email 1/2 to Slack once, so the operator can eyeball the current variants.
+    Runs in the background (research is slow); returns immediately."""
+    if not config.RB2B_WEBHOOK_TOKEN or token != config.RB2B_WEBHOOK_TOKEN:
+        return JSONResponse({"error": "invalid token"}, status_code=401)
+    from . import slack
+
+    async def _run():
+        for payload in _SAMPLE_LEADS:
+            try:
+                result = await asyncio.to_thread(process, payload, True)  # dry_run
+                await asyncio.to_thread(slack.post_full_copy, result)
+            except Exception:
+                log.exception("sample-copy failed for %s", payload.get("Company Name"))
+
+    asyncio.create_task(_run())
+    return JSONResponse({"status": "generating samples; full copy will post to Slack shortly"})
+
+
 @app.get("/debug/flush-digest")
 async def debug_flush_digest(token: str = Query(default="")) -> JSONResponse:
     """Token-gated: post the staged-lead digest now instead of waiting for the

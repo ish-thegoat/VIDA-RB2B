@@ -73,24 +73,32 @@ def is_high_intent_path(captured_path: str) -> bool:
 _PAGE_LABELS = {
     "/pricing": "pricing page", "/demo": "demo page", "/get-started": "get-started page",
     "/book-a-call": "book-a-call page", "/integrations": "integrations page",
-    "/case-studies": "case studies", "/customers": "customers page",
+    "/case-studies": "case studies page", "/customers": "customers page",
 }
 
 
+def _humanize(seg: str) -> str:
+    return seg.replace("-", " ").replace("_", " ").strip()
+
+
 def page_label(captured_path: str) -> str:
-    """Human phrase for the page visited, for use in the email opener."""
-    path = (captured_path or "/").lower()
+    """A specific, human phrase for the exact page visited, for the email opener.
+    Derives a meaningful label from ANY vida.io path (solutions, land, blog, etc.)
+    so copy can name what they actually looked at — never a vague 'your site'."""
+    path = (captured_path or "/").lower().rstrip("/")
     if path in ("", "/"):
-        return "your site"
+        return "homepage"
     for prefix, label in _PAGE_LABELS.items():
-        if path == prefix or path.startswith(prefix):
+        if path == prefix or path.startswith(prefix + "/"):
             return label
+    last = _humanize(path.rsplit("/", 1)[-1])
     if path.startswith("/solutions/"):
-        seg = path.rsplit("/", 1)[-1].replace("-", " ")
-        return f"{seg} solutions page"
+        return f"{last} solutions page"
+    if path.startswith("/land/") or path.startswith("/lp/"):
+        return f'"{last}" landing page'
     if path.startswith("/blog"):
-        return "blog"
-    return "your site"
+        return f'blog post ("{last}")' if last and last != "blog" else "blog"
+    return f"{last} page"
 
 
 def _startswith_any(path: str, prefixes: tuple[str, ...]) -> bool:

@@ -80,16 +80,33 @@ def notify_event(status: str, result: dict, sending: bool = False) -> None:
         parts.append("   " + " · ".join(meta))
     if result.get("signals"):
         parts.append(f"   🔥 {'; '.join(result['signals'])}")
-    if result.get("email_1"):
-        parts.append(f"\n*Email 1*\n{result['email_1']}")
-    if result.get("email_2"):
-        parts.append(f"\n*Email 2*\n{result['email_2']}")
     if result.get("error"):
         parts.append(f"   error: {result['error']}")
+    # Note: full Email 1 / Email 2 copy is intentionally NOT posted here (operator
+    # wants prospect + signal only). Full copy lives in EmailBison / the one-off
+    # /debug/sample-copy preview.
     try:
         _post("\n".join(parts))
     except Exception:
         pass
+
+
+def post_full_copy(result: dict) -> dict:
+    """Post the FULL generated copy for one lead (used by /debug/sample-copy so the
+    operator can eyeball the new variants once). Returns the Slack API result."""
+    if not config.SLACK_BOT_TOKEN:
+        return {"ok": False, "error": "no SLACK_BOT_TOKEN set"}
+    company = result.get("company_name") or result.get("domain") or "(unknown)"
+    lines = [f"*SAMPLE — {company}* ({result.get('captured_url', '')})",
+             f"tier {result.get('intent_tier')} · variant {result.get('variant')}"]
+    if result.get("email_1"):
+        lines.append(f"\n*Email 1*\n{result['email_1']}")
+    if result.get("email_2"):
+        lines.append(f"\n*Email 2*\n{result['email_2']}")
+    try:
+        return _post("\n".join(lines))
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
 
 
 def send_test(text: str = "Vida · RB2B receiver — Slack wiring test. If you can see this, the digest will post here.") -> dict:
