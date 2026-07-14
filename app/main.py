@@ -56,6 +56,10 @@ async def _worker(worker_id: int) -> None:
 
 
 async def _digest_loop() -> None:
+    if config.SLACK_MODE != "digest":
+        log.info("digest loop disabled (SLACK_MODE=%s; posting per-event in real time)",
+                 config.SLACK_MODE)
+        return
     interval = max(30, config.SLACK_DIGEST_INTERVAL_SECONDS)
     log.info("digest loop started (every %ds -> %s)", interval, config.SLACK_CHANNEL)
     while True:
@@ -82,6 +86,10 @@ async def _startup() -> None:
 @app.get("/health")
 async def health() -> JSONResponse:
     return JSONResponse({"status": "ok", "queue_depth": _QUEUE.qsize(),
+                         "mode": {"auto_send": config.AUTO_SEND,
+                                  "send_low_intent": config.SEND_LOW_INTENT,
+                                  "slack_mode": config.SLACK_MODE,
+                                  "campaign_id": config.EMAILBISON_CAMPAIGN_ID},
                          "requests": dict(_STATS), **store.counts()})
 
 

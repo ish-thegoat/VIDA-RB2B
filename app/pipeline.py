@@ -46,6 +46,19 @@ def _result(status: str, lead: Lead, **extra) -> dict:
     return out
 
 
+def _finish(status: str, lead: Lead, dry: bool, sending: bool = False, **extra) -> dict:
+    """Build the result and fire a real-time Slack notice (SLACK_MODE=realtime),
+    unless this is a dry run. Slack failures never break the worker."""
+    res = _result(status, lead, **extra)
+    if not dry:
+        try:
+            from . import slack
+            slack.notify_event(status, res, sending=sending)
+        except Exception:
+            log.exception("slack notify failed for %s", lead.company_name)
+    return res
+
+
 def process(payload: dict, dry_run: bool | None = None) -> dict:
     """Process one RB2B payload end to end. Returns a summary dict (also used by
     the dry-run replay script). dry_run defaults to config.DRY_RUN."""
@@ -55,12 +68,12 @@ def process(payload: dict, dry_run: bool | None = None) -> dict:
     # ── Test-event filter (run-commands Step 2): never push RB2B's test payload.
     if lead.company_name.strip().lower() == config.RB2B_TEST_COMPANY_NAME.lower():
         store.log_drop("test_event", lead, detail="RB2B test payload")
-        return _result("test_event", lead)
+        return _finish("test_event", lead, dry)
 
     # ── Dedupe (addendum §3): repeat visit inside the rolling window.
     if store.is_duplicate(lead.dedupe_key):
         store.log_drop("duplicate", lead, detail=f"seen within {config.DEDUPE_WINDOW_HOURS}h")
-        return _result("duplicate", lead)
+        return _finish("duplicate", lead, dry)
     store.record_seen(lead.dedupe_key)
     store.record_visit(lead)  # feeds return-visit + company-clustering signals
 
@@ -71,7 +84,7 @@ def process(payload: dict, dry_run: bool | None = None) -> dict:
     lead.classification_confidence = verdict.classification_confidence
     if verdict.is_stop:
         store.log_drop(verdict.icp_verdict, lead, detail="ICP gate stop")
-        return _result("dropped_icp", lead)
+        return _finish("dropped_icp", lead, dry)
 
     # ── Captured-URL mapping (addendum §5). Cold/no-signal => hold, no copy.
     mapping = map_captured_url(lead.captured_path)
@@ -86,9 +99,16 @@ def process(payload: dict, dry_run: bool | None = None) -> dict:
     lead.signals = signals.compute(lead)
 
     variant, prompt_file = variant_for_tier(lead.intent_tier)
-    if not variant:  # Cold / low-intent hold — logged, no copy generated (§4 Step 4)
-        store.log_drop("low_intent_hold", lead, detail=f"path={lead.captured_path}")
-        return _result("low_intent_hold", lead)
+    if not variant:
+        # Cold / no page-level signal. By default (SEND_LOW_INTENT) we still email
+        # these using the segment-mirror variant (page-agnostic copy) as long as the
+        # ICP gate resolved a segment; otherwise hold with no copy (§4 Step 4).
+        if config.SEND_LOW_INTENT and lead.segment:
+            lead.intent_tier = "Explore"
+            variant, prompt_file = variant_for_tier("Warm")  # -> Variant B / v2
+        else:
+            store.log_drop("low_intent_hold", lead, detail=f"path={lead.captured_path}")
+            return _finish("low_intent_hold", lead, dry)
     lead.variant = variant
     lead.variant_prompt = prompt_file
 
@@ -98,14 +118,14 @@ def process(payload: dict, dry_run: bool | None = None) -> dict:
         if enriched == "no_match":
             store.append_manual_review(lead)
             store.log_drop("aiark_no_match", lead, detail="AI Ark found no contact")
-            return _result("manual_review", lead)
+            return _finish("manual_review", lead, dry)
 
     # ── Copy generation (approved prompt files).
     try:
         copy = copy_gen.generate(lead)
     except Exception as e:
         store.log_drop("error", lead, detail=f"copy_gen: {str(e)[:200]}")
-        return _result("error_copy", lead, error=str(e)[:200])
+        return _finish("error_copy", lead, dry, error=str(e)[:200])
     lead.research_brief = copy.research_output
     lead.email_1 = copy.email_1
     lead.email_2 = copy.email_2
@@ -118,22 +138,25 @@ def process(payload: dict, dry_run: bool | None = None) -> dict:
 
     try:
         camp = _resolve_campaign()
-        # Safety gate: never push into a campaign that is actively sending — that
-        # would send an un-approved email. Leads must land PAUSED (addendum §4 Step 5).
-        if emailbison.is_sending(camp.get("status")):
+        sending = emailbison.is_sending(camp.get("status"))
+        # In AUTO_SEND mode we push into an active campaign on purpose (that's how
+        # real sends happen). Only when AUTO_SEND is off do we refuse a sending
+        # campaign, so a lead can't go out un-gated.
+        if sending and not config.AUTO_SEND:
             store.log_drop("error", lead,
-                           detail=f"campaign {camp['id']} status={camp.get('status')!r} is sending; refused")
-            return _result("error_campaign_active", lead,
-                           error=f"campaign {camp['id']} is {camp.get('status')} (not paused)")
+                           detail=f"campaign {camp['id']} status={camp.get('status')!r} sending; AUTO_SEND off; refused")
+            return _finish("error_campaign_active", lead, dry,
+                           error=f"campaign {camp['id']} is {camp.get('status')} and AUTO_SEND is off")
         push = emailbison.stage_leads([lead], camp["id"])
     except Exception as e:
         store.log_drop("error", lead, detail=f"emailbison: {str(e)[:200]}")
-        return _result("error_push", lead, error=str(e)[:200])
+        return _finish("error_push", lead, dry, error=str(e)[:200])
 
     store.record_staged(lead, push.get("lead_ids"), campaign=camp)
     if push.get("errors"):
         log.warning("EmailBison push had errors for %s: %s", lead.company_name, push["errors"])
-    return _result("staged", lead, emailbison=push)
+    return _finish("staged", lead, dry, sending=sending, emailbison=push,
+                   email_1=lead.email_1, email_2=lead.email_2)
 
 
 def _enrich(lead: Lead, dry: bool) -> str:

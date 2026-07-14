@@ -62,6 +62,20 @@ SLACK_DIGEST_INTERVAL_SECONDS = int(_get("SLACK_DIGEST_INTERVAL_SECONDS", "900")
 # EmailBison or Slack, and skip paid AI Ark enrichment. Used by scripts/dry_run.py.
 DRY_RUN = _get_bool("DRY_RUN", False)
 
+# ── Fully-automated send mode (operator-enabled) ─────────────────────────────
+# AUTO_SEND: push into campaign 792 even when it is actively sending (i.e. real
+# emails go out with no paused-staging gate). The actual send is controlled by
+# campaign 792's state in EmailBison — activate it once to go live, pause it to
+# stop everything.
+AUTO_SEND = _get_bool("AUTO_SEND", True)
+# SEND_LOW_INTENT: also generate + push copy for low-intent hits (homepage, blog,
+# unmapped pages) using the segment-mirror variant, instead of holding them.
+# Requires the ICP gate to have resolved a segment; otherwise the hit is still held.
+SEND_LOW_INTENT = _get_bool("SEND_LOW_INTENT", True)
+# SLACK_MODE: "realtime" posts a message per processed event (all outcomes);
+# "digest" batches staged leads every SLACK_DIGEST_INTERVAL_SECONDS.
+SLACK_MODE = _get("SLACK_MODE", "realtime")
+
 # Dedupe window: a (LinkedIn URL or Company Name)+Captured URL seen inside this
 # many hours is treated as a repeat visit and dropped. Addendum §3.
 DEDUPE_WINDOW_HOURS = int(_get("DEDUPE_WINDOW_HOURS", "24") or "24")

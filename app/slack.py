@@ -45,6 +45,53 @@ def _format(rows: Iterable) -> str:
     return "\n".join(lines)
 
 
+_OUTCOME_EMOJI = {
+    "sent": "🟢", "staged": "🟢", "manual_review": "🟡",
+    "low_intent_hold": "⏸️", "duplicate": "⏸️", "test_event": "⚪",
+    "dropped_icp": "🔴", "error_push": "⛔", "error_copy": "⛔",
+    "error_campaign_active": "⛔",
+}
+
+
+def notify_event(status: str, result: dict, sending: bool = False) -> None:
+    """Post a single real-time message for one processed hit (SLACK_MODE=realtime).
+    Non-fatal: Slack problems must never break the worker."""
+    if config.SLACK_MODE != "realtime" or not config.SLACK_BOT_TOKEN:
+        return
+    emoji = _OUTCOME_EMOJI.get(status, "•")
+    company = result.get("company_name") or result.get("domain") or "(unknown)"
+    verb = {"staged": "SENDING" if sending else "staged (paused)",
+            "sent": "SENDING", "manual_review": "company-only → manual review",
+            "low_intent_hold": "held (low intent, no segment)",
+            "duplicate": "duplicate (deduped)", "test_event": "RB2B test event",
+            "dropped_icp": f"dropped ({result.get('icp_verdict')})"}.get(status, status)
+    parts = [f"{emoji} *{company}* — {verb}"]
+    if result.get("captured_url"):
+        parts.append(f"   {result['captured_url']}")
+    meta = []
+    if result.get("intent_tier"):
+        meta.append(f"tier {result['intent_tier']}")
+    if result.get("variant"):
+        meta.append(f"variant {result['variant']}")
+    if result.get("segment"):
+        seg = result["segment"]
+        meta.append("seg " + (", ".join(seg) if isinstance(seg, list) else str(seg)))
+    if meta:
+        parts.append("   " + " · ".join(meta))
+    if result.get("signals"):
+        parts.append(f"   🔥 {'; '.join(result['signals'])}")
+    if result.get("email_1"):
+        parts.append(f"\n*Email 1*\n{result['email_1']}")
+    if result.get("email_2"):
+        parts.append(f"\n*Email 2*\n{result['email_2']}")
+    if result.get("error"):
+        parts.append(f"   error: {result['error']}")
+    try:
+        _post("\n".join(parts))
+    except Exception:
+        pass
+
+
 def send_test(text: str = "Vida · RB2B receiver — Slack wiring test. If you can see this, the digest will post here.") -> dict:
     """Post a one-off message to confirm bot token + channel + membership."""
     if not config.SLACK_BOT_TOKEN:
