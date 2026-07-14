@@ -60,33 +60,18 @@ def notify_event(status: str, result: dict, sending: bool = False) -> None:
         return
     emoji = _OUTCOME_EMOJI.get(status, "•")
     company = result.get("company_name") or result.get("domain") or "(unknown)"
-    verb = {"staged": "SENDING" if sending else "staged (paused)",
-            "sent": "SENDING", "manual_review": "company-only → manual review",
-            "low_intent_hold": "held (low intent, no segment)",
-            "duplicate": "duplicate (deduped)", "test_event": "RB2B test event",
-            "dropped_icp": f"dropped ({result.get('icp_verdict')})"}.get(status, status)
-    parts = [f"{emoji} *{company}* — {verb}"]
+    # Prospect + signal ONLY (operator): company, the page they hit, and any intent
+    # signals. No outcome verbiage, no tier/variant/segment, no email bodies.
+    detail = []
     if result.get("captured_url"):
-        parts.append(f"   {result['captured_url']}")
-    meta = []
-    if result.get("intent_tier"):
-        meta.append(f"tier {result['intent_tier']}")
-    if result.get("variant"):
-        meta.append(f"variant {result['variant']}")
-    if result.get("segment"):
-        seg = result["segment"]
-        meta.append("seg " + (", ".join(seg) if isinstance(seg, list) else str(seg)))
-    if meta:
-        parts.append("   " + " · ".join(meta))
+        detail.append(result["captured_url"])
     if result.get("signals"):
-        parts.append(f"   🔥 {'; '.join(result['signals'])}")
-    if result.get("error"):
-        parts.append(f"   error: {result['error']}")
-    # Note: full Email 1 / Email 2 copy is intentionally NOT posted here (operator
-    # wants prospect + signal only). Full copy lives in EmailBison / the one-off
-    # /debug/sample-copy preview.
+        detail.append(" · ".join(result["signals"]))
+    msg = f"{emoji} *{company}*"
+    if detail:
+        msg += "\n   " + " — ".join(detail)
     try:
-        _post("\n".join(parts))
+        _post(msg)
     except Exception:
         pass
 
