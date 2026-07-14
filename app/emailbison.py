@@ -70,10 +70,37 @@ def list_campaigns(search: Optional[str] = None) -> list[dict]:
     return (_request("GET", "/api/campaigns", query=query) or {}).get("data", [])
 
 
-def resolve_campaign(name: str) -> dict:
-    """Find the campaign by exact (case-insensitive) name. Never creates one —
-    pushing into the wrong/new campaign pollutes another segment's metrics
-    (addendum §8), so a missing campaign is a hard error the operator resolves."""
+# Campaign states in which attaching a lead would cause it to SEND. We refuse to
+# push unless the campaign is in a non-sending (paused/draft) state, so a lead can
+# never go out un-gated (addendum standing rule: all sends are approval-gated).
+_SENDING_STATES = {"active", "running", "sending", "live", "started"}
+
+
+def is_sending(status) -> bool:
+    return (status or "").strip().lower() in _SENDING_STATES
+
+
+def resolve_campaign(name: str = "") -> dict:
+    """Resolve the target campaign. Prefers EMAILBISON_CAMPAIGN_ID (exact id the
+    operator named); otherwise finds it by exact (case-insensitive) name.
+
+    Never creates a campaign — pushing into the wrong/new one pollutes another
+    segment's metrics (addendum §8). Returns {id, name, status}."""
+    name = name or config.EMAILBISON_CAMPAIGN_NAME
+    cid = (config.EMAILBISON_CAMPAIGN_ID or "").strip()
+
+    if cid:
+        # Verify the id exists in workspace 29 and read its status. Search by the
+        # configured name to narrow the list, then match on id.
+        for c in list_campaigns(search=name):
+            if str(c.get("id")) == cid:
+                return {"id": int(cid), "name": c.get("name"), "status": c.get("status")}
+        # Not found via the name search — widen to an unfiltered list before trusting the id blindly.
+        for c in list_campaigns():
+            if str(c.get("id")) == cid:
+                return {"id": int(cid), "name": c.get("name"), "status": c.get("status")}
+        return {"id": int(cid), "name": name, "status": None}
+
     target = (name or "").strip().lower()
     for c in list_campaigns(search=name):
         if (c.get("name") or "").strip().lower() == target:

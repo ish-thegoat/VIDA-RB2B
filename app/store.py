@@ -60,19 +60,21 @@ def _conn() -> sqlite3.Connection:
         CREATE INDEX IF NOT EXISTS idx_drops_reason ON drops(reason);
 
         CREATE TABLE IF NOT EXISTS staged (
-            id             INTEGER PRIMARY KEY AUTOINCREMENT,
-            ts             TEXT NOT NULL,
-            company_name   TEXT,
-            domain         TEXT,
-            contact_name   TEXT,
-            contact_email  TEXT,
-            segment        TEXT,
-            captured_url   TEXT,
-            intent_tier    TEXT,
-            variant        TEXT,
-            icp_verdict    TEXT,
-            eb_lead_ids    TEXT,
-            digest_sent    INTEGER NOT NULL DEFAULT 0
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts              TEXT NOT NULL,
+            company_name    TEXT,
+            domain          TEXT,
+            contact_name    TEXT,
+            contact_email   TEXT,
+            segment         TEXT,
+            captured_url    TEXT,
+            intent_tier     TEXT,
+            variant         TEXT,
+            icp_verdict     TEXT,
+            eb_lead_ids     TEXT,
+            campaign_id     TEXT,
+            campaign_status TEXT,
+            digest_sent     INTEGER NOT NULL DEFAULT 0
         );
         """
     )
@@ -135,22 +137,43 @@ def log_drop(reason: str, lead=None, detail: str = "", payload: Optional[dict] =
 
 # ── Staged leads + digest buffer ─────────────────────────────────────────────
 
-def record_staged(lead, eb_lead_ids: Any = None) -> int:
+def record_staged(lead, eb_lead_ids: Any = None, campaign: Optional[dict] = None) -> int:
     contact_name = " ".join(x for x in [getattr(lead, "first_name", ""),
                                         getattr(lead, "last_name", "")] if x).strip()
+    campaign = campaign or {}
     with _LOCK:
         conn = _conn()
         cur = conn.execute(
             "INSERT INTO staged (ts, company_name, domain, contact_name, contact_email, "
-            "segment, captured_url, intent_tier, variant, icp_verdict, eb_lead_ids) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "segment, captured_url, intent_tier, variant, icp_verdict, eb_lead_ids, "
+            "campaign_id, campaign_status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (_now_iso(), lead.company_name, lead.domain, contact_name,
              lead.business_email, ", ".join(lead.segment) if lead.segment else "",
              lead.captured_url, lead.intent_tier, lead.variant, lead.icp_verdict,
-             json.dumps(eb_lead_ids or [])),
+             json.dumps(eb_lead_ids or []),
+             str(campaign.get("id", "")), str(campaign.get("status", ""))),
         )
         conn.commit()
         return cur.lastrowid
+
+
+def recent_staged(limit: int = 5) -> list[dict]:
+    with _LOCK:
+        conn = _conn()
+        rows = conn.execute(
+            "SELECT * FROM staged ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def recent_drops(limit: int = 5) -> list[dict]:
+    with _LOCK:
+        conn = _conn()
+        rows = conn.execute(
+            "SELECT id, ts, reason, company_name, domain, captured_url, icp_verdict, "
+            "segment, detail FROM drops ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [dict(r) for r in rows]
 
 
 def pending_digest_rows() -> list[sqlite3.Row]:

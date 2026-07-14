@@ -74,6 +74,26 @@ async def health() -> JSONResponse:
     return JSONResponse({"status": "ok", "queue_depth": _QUEUE.qsize(), **store.counts()})
 
 
+@app.get("/debug/recent")
+async def debug_recent(token: str = Query(default="")) -> JSONResponse:
+    """Token-gated operational view: recent staged leads + drops + resolved
+    campaign status. Behind the webhook token so lead metadata isn't public."""
+    if not config.RB2B_WEBHOOK_TOKEN or token != config.RB2B_WEBHOOK_TOKEN:
+        return JSONResponse({"error": "invalid token"}, status_code=401)
+    from . import emailbison
+    campaign = None
+    try:
+        campaign = await asyncio.to_thread(emailbison.resolve_campaign)
+    except Exception as e:
+        campaign = {"error": str(e)[:200]}
+    return JSONResponse({
+        "counts": store.counts(),
+        "campaign": campaign,
+        "staged": store.recent_staged(5),
+        "drops": store.recent_drops(5),
+    })
+
+
 @app.post("/webhooks/rb2b")
 async def rb2b_webhook(request: Request, token: str = Query(default="")) -> Response:
     # 1) auth: single self-contained URL, token in query param (addendum §3).

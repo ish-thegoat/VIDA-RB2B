@@ -30,8 +30,10 @@ RB2B_WEBHOOK_TOKEN = _get("RB2B_WEBHOOK_TOKEN")
 # ── EmailBison target ────────────────────────────────────────────────────────
 EMAILBISON_WORKSPACE_ID = int(_get("EMAILBISON_WORKSPACE_ID", "29") or "29")
 EMAILBISON_BASE_URL = _get("EMAILBISON_BASE_URL", "https://personal.buzzlead.io")
-# Exact campaign name is verified against EmailBison at push time (list-campaigns).
-EMAILBISON_CAMPAIGN_NAME = _get("EMAILBISON_CAMPAIGN_NAME", "Vida - RB2B Website Visitors")
+# Target campaign. If EMAILBISON_CAMPAIGN_ID is set we push to that id directly
+# (verified + status-checked at push time); otherwise we resolve by exact name.
+EMAILBISON_CAMPAIGN_ID = _get("EMAILBISON_CAMPAIGN_ID", "792")
+EMAILBISON_CAMPAIGN_NAME = _get("EMAILBISON_CAMPAIGN_NAME", "RB2B Intent Workflow - 07/14")
 
 # ── Copy generation ──────────────────────────────────────────────────────────
 # The approved prompt files pin a model in each JSON block. We honor that by

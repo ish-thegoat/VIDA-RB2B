@@ -21,13 +21,13 @@ log = logging.getLogger("rb2b.pipeline")
 _CAMPAIGN_CACHE: dict = {}
 
 
-def _resolve_campaign_id() -> int:
+def _resolve_campaign() -> dict:
     if "id" not in _CAMPAIGN_CACHE:
-        camp = emailbison.resolve_campaign(config.EMAILBISON_CAMPAIGN_NAME)
+        camp = emailbison.resolve_campaign()
         _CAMPAIGN_CACHE.update(camp)
         log.info("Resolved EmailBison campaign %r -> id=%s status=%s",
                  camp["name"], camp["id"], camp.get("status"))
-    return _CAMPAIGN_CACHE["id"]
+    return _CAMPAIGN_CACHE
 
 
 def _result(status: str, lead: Lead, **extra) -> dict:
@@ -112,13 +112,20 @@ def process(payload: dict, dry_run: bool | None = None) -> dict:
                        research_brief=lead.research_brief)
 
     try:
-        campaign_id = _resolve_campaign_id()
-        push = emailbison.stage_leads([lead], campaign_id)
+        camp = _resolve_campaign()
+        # Safety gate: never push into a campaign that is actively sending — that
+        # would send an un-approved email. Leads must land PAUSED (addendum §4 Step 5).
+        if emailbison.is_sending(camp.get("status")):
+            store.log_drop("error", lead,
+                           detail=f"campaign {camp['id']} status={camp.get('status')!r} is sending; refused")
+            return _result("error_campaign_active", lead,
+                           error=f"campaign {camp['id']} is {camp.get('status')} (not paused)")
+        push = emailbison.stage_leads([lead], camp["id"])
     except Exception as e:
         store.log_drop("error", lead, detail=f"emailbison: {str(e)[:200]}")
         return _result("error_push", lead, error=str(e)[:200])
 
-    store.record_staged(lead, push.get("lead_ids"))
+    store.record_staged(lead, push.get("lead_ids"), campaign=camp)
     if push.get("errors"):
         log.warning("EmailBison push had errors for %s: %s", lead.company_name, push["errors"])
     return _result("staged", lead, emailbison=push)
