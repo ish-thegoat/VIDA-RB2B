@@ -97,6 +97,7 @@ class Lead:
     email_1: str = ""
     email_2: str = ""
     enriched: bool = False
+    signals: list = field(default_factory=list)  # intent signals (see signals.py)
 
     @property
     def is_company_only(self) -> bool:
@@ -111,6 +112,28 @@ class Lead:
 
     def has_tag(self, needle: str) -> bool:
         return needle.lower() in self.tags.lower()
+
+    @property
+    def return_anchor(self) -> str:
+        """Identity used to detect the same visitor returning across days."""
+        return (self.linkedin_url or self.business_email or self.company_name).lower()
+
+    @property
+    def person_key(self) -> str:
+        """Identity used to count distinct visitors from one company domain."""
+        ident = (self.linkedin_url or self.business_email
+                 or f"{self.first_name} {self.last_name}".strip() or self.company_name)
+        return ident.lower()
+
+    def visit_day(self) -> str:
+        """The calendar day of this visit (from Seen At, else today, UTC)."""
+        from datetime import datetime, timezone
+        if self.seen_at:
+            try:
+                return datetime.fromisoformat(self.seen_at.replace("Z", "+00:00")).date().isoformat()
+            except ValueError:
+                pass
+        return datetime.now(timezone.utc).date().isoformat()
 
 
 def parse_rb2b(payload: dict) -> Lead:

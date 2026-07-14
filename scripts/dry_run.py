@@ -82,6 +82,8 @@ def _print(result: dict) -> None:
     print(f"{result.get('company_name') or '(none)':<32} status={result['status']}")
     print(f"  verdict={result.get('icp_verdict')!r} segment={result.get('segment')} "
           f"tier={result.get('intent_tier')!r} variant={result.get('variant')!r}")
+    if result.get("signals"):
+        print(f"  signals={result['signals']}")
     print(f"  captured_url={result.get('captured_url')}")
     if result.get("email_1"):
         print("\n  --- EMAIL 1 ---")

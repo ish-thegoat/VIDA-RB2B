@@ -33,10 +33,13 @@ def _format(rows: Iterable) -> str:
     for r in rows:
         company = r["company_name"] or r["domain"] or "(unknown company)"
         seg = r["segment"] or "—"
-        lines.append(
-            f"• *{company}* — {seg} · tier {r['intent_tier']} · variant {r['variant']}\n"
-            f"   {r['captured_url']}"
-        )
+        sig = (r["signals"] if "signals" in r.keys() else "") or ""
+        flag = "🔥 " if sig else ""
+        line = f"• {flag}*{company}* — {seg} · tier {r['intent_tier']} · variant {r['variant']}"
+        if sig:
+            line += f"\n   signals: {sig}"
+        line += f"\n   {r['captured_url']}"
+        lines.append(line)
     lines.append("")
     lines.append("Staged paused in EmailBison. Approve/activate in the workspace to send.")
     return "\n".join(lines)

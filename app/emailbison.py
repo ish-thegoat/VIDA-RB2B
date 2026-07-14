@@ -153,6 +153,8 @@ def build_lead(lead) -> dict:
         {"name": "intent_tier", "value": lead.intent_tier or ""},
         {"name": "research_brief", "value": lead.research_brief or ""},
         {"name": "icp_verdict", "value": lead.icp_verdict or ""},
+        {"name": "rb2b_signals", "value": "; ".join(getattr(lead, "signals", []) or [])},
+        {"name": "rb2b_tags", "value": lead.tags or ""},
     ]
     return {
         "email": lead.business_email,

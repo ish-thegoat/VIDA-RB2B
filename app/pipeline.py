@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 
-from . import aiark, config, copy_gen, emailbison, icp_gate, store
+from . import aiark, config, copy_gen, emailbison, icp_gate, signals, store
 from .models import Lead, parse_rb2b
 from .url_mapping import apply_tags_upgrade, map_captured_url, variant_for_tier
 
@@ -40,6 +40,7 @@ def _result(status: str, lead: Lead, **extra) -> dict:
         "segment": lead.segment,
         "intent_tier": lead.intent_tier,
         "variant": lead.variant,
+        "signals": lead.signals,
     }
     out.update(extra)
     return out
@@ -61,6 +62,7 @@ def process(payload: dict, dry_run: bool | None = None) -> dict:
         store.log_drop("duplicate", lead, detail=f"seen within {config.DEDUPE_WINDOW_HOURS}h")
         return _result("duplicate", lead)
     store.record_seen(lead.dedupe_key)
+    store.record_visit(lead)  # feeds return-visit + company-clustering signals
 
     # ── ICP gate (addendum §4 Step 1): before any copy or enrichment spend.
     verdict = icp_gate.classify(lead)
@@ -79,6 +81,9 @@ def process(payload: dict, dry_run: bool | None = None) -> dict:
     lead.intent_tier = mapping.intent_tier
     if not lead.segment and mapping.matched:
         lead.segment = [mapping.segment_signal]
+
+    # Intent signals (surfaced on the staged lead; do not change the variant).
+    lead.signals = signals.compute(lead)
 
     variant, prompt_file = variant_for_tier(lead.intent_tier)
     if not variant:  # Cold / low-intent hold — logged, no copy generated (§4 Step 4)

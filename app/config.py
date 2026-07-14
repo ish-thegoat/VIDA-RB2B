@@ -53,7 +53,7 @@ EMAILBISON_CAMPAIGN_NAME = _get("EMAILBISON_CAMPAIGN_NAME", "RB2B Intent Workflo
 COPY_MODEL_OVERRIDE = _get("COPY_MODEL")
 
 # ── Slack ────────────────────────────────────────────────────────────────────
-SLACK_CHANNEL = _get("SLACK_CHANNEL", "#vida-buzzlead-private-channel")
+SLACK_CHANNEL = _get("SLACK_CHANNEL", "#vida-rb2b")
 # Flush the staged-lead digest on this cadence (seconds). Batches, never per-lead.
 SLACK_DIGEST_INTERVAL_SECONDS = int(_get("SLACK_DIGEST_INTERVAL_SECONDS", "900") or "900")
 

@@ -42,20 +42,33 @@ Set these in Railway (exact names). See `.env.example`.
 `SLACK_BOT_TOKEN`, `RB2B_WEBHOOK_TOKEN`.
 
 **EmailBison target:** `EMAILBISON_WORKSPACE_ID` (=29), `EMAILBISON_BASE_URL`
-(=`https://personal.buzzlead.io`), `EMAILBISON_CAMPAIGN_NAME`
-(=`Vida - RB2B Website Visitors`).
+(=`https://personal.buzzlead.io`), `EMAILBISON_CAMPAIGN_ID` (=792, wins over
+name), `EMAILBISON_CAMPAIGN_NAME` (=`RB2B Intent Workflow - 07/14`).
 
-**Slack / tuning:** `SLACK_CHANNEL` (=`#vida-buzzlead-private-channel`),
+**Slack / tuning:** `SLACK_CHANNEL` (=`#vida-rb2b`),
 `SLACK_DIGEST_INTERVAL_SECONDS` (=900), `COPY_MODEL` (optional override),
 `DEDUPE_WINDOW_HOURS` (=24), `DB_PATH` / `DATA_DIR` (point at a volume to persist).
+
+## Intent signals (watched per hit)
+
+Each hit is scored for buying intent; matches are surfaced on the staged lead
+(the `rb2b_signals` custom field and 🔥 badges in the Slack digest) so a reviewer
+can spot the hot ones. Signals do not change the copy variant — that stays driven
+by the page mapping — they prioritize.
+
+- **high-intent page** — pricing, integrations, case-studies, demo, get-started
+- **return visitor** — seen on >1 distinct day within 7 days
+- **buying group** — >1 distinct visitor from the same company domain within 7 days
+- **RB2B ICP-tagged** / **Hot-Pages tag** — honored from RB2B's own tags (ICP
+  traits — size / industry / seniority — are configured in the RB2B dashboard)
 
 ## Custom fields written to EmailBison
 
 Each staged lead carries `rb2b_variant`, `captured_url`, `intent_tier`,
-`research_brief`, `icp_verdict` (for variant-level reporting) plus the sequence
-merge fields `personalization 1` (Email 1), `personalization 2` (Email 2), and
-`company name cleaned`. Missing custom variables are auto-registered in the
-workspace before upsert.
+`research_brief`, `icp_verdict`, `rb2b_signals`, `rb2b_tags` (for variant-level
+reporting) plus the sequence merge fields `personalization 1` (Email 1),
+`personalization 2` (Email 2), and `company name cleaned`. Missing custom
+variables are auto-registered in the workspace before upsert.
 
 **"Paused" means:** the service upserts leads and *attaches* them to the campaign
 but never *starts* it. Leads sit staged until a human activates the campaign in

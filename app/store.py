@@ -74,8 +74,21 @@ def _conn() -> sqlite3.Connection:
             eb_lead_ids     TEXT,
             campaign_id     TEXT,
             campaign_status TEXT,
+            signals         TEXT,
             digest_sent     INTEGER NOT NULL DEFAULT 0
         );
+
+        CREATE TABLE IF NOT EXISTS visits (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts            INTEGER NOT NULL,
+            day           TEXT NOT NULL,
+            anchor        TEXT,
+            domain        TEXT,
+            person_key    TEXT,
+            captured_path TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_visits_anchor ON visits(anchor);
+        CREATE INDEX IF NOT EXISTS idx_visits_domain ON visits(domain);
         """
     )
     conn.commit()
@@ -146,15 +159,59 @@ def record_staged(lead, eb_lead_ids: Any = None, campaign: Optional[dict] = None
         cur = conn.execute(
             "INSERT INTO staged (ts, company_name, domain, contact_name, contact_email, "
             "segment, captured_url, intent_tier, variant, icp_verdict, eb_lead_ids, "
-            "campaign_id, campaign_status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "campaign_id, campaign_status, signals) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (_now_iso(), lead.company_name, lead.domain, contact_name,
              lead.business_email, ", ".join(lead.segment) if lead.segment else "",
              lead.captured_url, lead.intent_tier, lead.variant, lead.icp_verdict,
              json.dumps(eb_lead_ids or []),
-             str(campaign.get("id", "")), str(campaign.get("status", ""))),
+             str(campaign.get("id", "")), str(campaign.get("status", "")),
+             "; ".join(getattr(lead, "signals", []) or [])),
         )
         conn.commit()
         return cur.lastrowid
+
+
+# ── Visit tracking (return-visit + company-clustering signals) ───────────────
+
+def record_visit(lead) -> None:
+    with _LOCK:
+        conn = _conn()
+        conn.execute(
+            "INSERT INTO visits (ts, day, anchor, domain, person_key, captured_path) "
+            "VALUES (?,?,?,?,?,?)",
+            (int(time.time()), lead.visit_day(), lead.return_anchor, lead.domain,
+             lead.person_key, lead.captured_path),
+        )
+        # Bound growth: keep ~30 days of visit history.
+        conn.execute("DELETE FROM visits WHERE ts <= ?", (int(time.time()) - 30 * 86400,))
+        conn.commit()
+
+
+def distinct_visit_days(anchor: str, days: int = 7) -> int:
+    """How many distinct calendar days this visitor has been seen in the window."""
+    if not anchor:
+        return 0
+    cutoff = int(time.time()) - days * 86400
+    with _LOCK:
+        conn = _conn()
+        return conn.execute(
+            "SELECT COUNT(DISTINCT day) AS n FROM visits WHERE anchor = ? AND ts > ?",
+            (anchor, cutoff),
+        ).fetchone()["n"]
+
+
+def distinct_domain_visitors(domain: str, days: int = 7) -> int:
+    """How many distinct people from this company domain in the window."""
+    if not domain:
+        return 0
+    cutoff = int(time.time()) - days * 86400
+    with _LOCK:
+        conn = _conn()
+        return conn.execute(
+            "SELECT COUNT(DISTINCT person_key) AS n FROM visits "
+            "WHERE domain = ? AND ts > ? AND person_key != ''",
+            (domain, cutoff),
+        ).fetchone()["n"]
 
 
 def recent_staged(limit: int = 5) -> list[dict]:

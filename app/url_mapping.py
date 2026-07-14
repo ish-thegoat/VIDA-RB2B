@@ -59,6 +59,15 @@ _SOLUTION_TABLE: list[tuple[tuple[str, ...], Mapping]] = [
 ]
 
 _PROOF_PATHS = ("/case-studies", "/customers")
+_INTEGRATION_PATHS = ("/integrations",)
+
+# Pages people hit when actively evaluating (not just browsing). Used for the
+# high-intent signal (surfaced/prioritized), independent of variant selection.
+_HIGH_INTENT_PATHS = _HOT_PATHS + _INTEGRATION_PATHS + _PROOF_PATHS
+
+
+def is_high_intent_path(captured_path: str) -> bool:
+    return _startswith_any((captured_path or "/").lower(), _HIGH_INTENT_PATHS)
 
 
 def _startswith_any(path: str, prefixes: tuple[str, ...]) -> bool:
@@ -79,6 +88,11 @@ def map_captured_url(captured_path: str) -> Mapping:
 
     if _startswith_any(path, _PROOF_PATHS):
         return Mapping("Proof-seeking", "proof_forward", "(matched to ICP industry)", WARM_HOT)
+
+    if _startswith_any(path, _INTEGRATION_PATHS):
+        # Evaluating fit with existing stack — SIP-native / no-migration angle,
+        # segment resolved by the ICP gate. High-intent, Variant B (segment mirror).
+        return Mapping("(ICP-resolved segment)", "partner_sip_native", "(matched to ICP industry)", WARM_HOT)
 
     # Homepage, blog, or anything not in the table -> no page-level signal -> hold.
     return Mapping("No page-level signal", "undefined_explore", "none", COLD, matched=False)
