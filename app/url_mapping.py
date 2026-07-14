@@ -70,6 +70,29 @@ def is_high_intent_path(captured_path: str) -> bool:
     return _startswith_any((captured_path or "/").lower(), _HIGH_INTENT_PATHS)
 
 
+_PAGE_LABELS = {
+    "/pricing": "pricing page", "/demo": "demo page", "/get-started": "get-started page",
+    "/book-a-call": "book-a-call page", "/integrations": "integrations page",
+    "/case-studies": "case studies", "/customers": "customers page",
+}
+
+
+def page_label(captured_path: str) -> str:
+    """Human phrase for the page visited, for use in the email opener."""
+    path = (captured_path or "/").lower()
+    if path in ("", "/"):
+        return "your site"
+    for prefix, label in _PAGE_LABELS.items():
+        if path == prefix or path.startswith(prefix):
+            return label
+    if path.startswith("/solutions/"):
+        seg = path.rsplit("/", 1)[-1].replace("-", " ")
+        return f"{seg} solutions page"
+    if path.startswith("/blog"):
+        return "blog"
+    return "your site"
+
+
 def _startswith_any(path: str, prefixes: tuple[str, ...]) -> bool:
     return any(path == p or path.startswith(p + "/") or path.startswith(p) for p in prefixes)
 

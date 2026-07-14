@@ -18,8 +18,9 @@ import os
 import re
 from dataclasses import dataclass
 
-from . import config, llm
+from . import config, llm, research
 from .models import Lead
+from .url_mapping import page_label
 
 _PROMPT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "prompts")
 _JSON_BLOCK = re.compile(r"```json\s*(\{.*?\})\s*```", re.DOTALL)
@@ -65,9 +66,7 @@ def _run_block(block: dict, merge: dict[str, str]) -> str:
 
 
 def _base_merge(lead: Lead) -> dict[str, str]:
-    """Merge values available from the lead (+ enrichment). Empty string, never
-    a literal tag, for anything we don't have — the prompts are built to infer
-    from industry/size and to not invent unsupported specifics."""
+    """Merge values available from the lead (+ enrichment)."""
     return {
         "Company Name": lead.company_name,
         "Domain": lead.domain,
@@ -75,7 +74,7 @@ def _base_merge(lead: Lead) -> dict[str, str]:
         "First Name": lead.first_name,
         "Last Name": lead.last_name,
         "Job Title": lead.title,
-        # These come from enrichment when present; blank otherwise (addendum §3).
+        "Captured Page": page_label(lead.captured_path),
         "LinkedIn Company Description": lead.raw.get("_company_description", ""),
         "Company Description": lead.raw.get("_company_description", ""),
         "Recent News": lead.raw.get("_recent_news", ""),
@@ -83,16 +82,24 @@ def _base_merge(lead: Lead) -> dict[str, str]:
 
 
 def generate(lead: Lead) -> CopyResult:
-    """Run the 3-block chain for the lead's resolved variant."""
+    """Run the email chain, grounded in REAL research.
+
+    We replace the prompt file's data-less research block with app.research
+    (live website fetch + web search), then run the two email blocks against that
+    real brief. Falls back to the file's research block only if research returns
+    nothing, so copy generation never hard-fails.
+    """
     blocks = _load_blocks(lead.variant_prompt)
     merge = _base_merge(lead)
 
-    research = _run_block(blocks[0], merge)
-    merge["Research Output"] = research
+    brief = research.deep_research(lead)
+    if not brief:
+        brief = _run_block(blocks[0], merge)  # fallback: file's research block
+    merge["Research Output"] = brief
 
     email_1 = _run_block(blocks[1], merge)
     merge["Email 1 Output"] = email_1
 
     email_2 = _run_block(blocks[2], merge)
 
-    return CopyResult(research_output=research, email_1=email_1, email_2=email_2)
+    return CopyResult(research_output=brief, email_1=email_1, email_2=email_2)

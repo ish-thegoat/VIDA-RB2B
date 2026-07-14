@@ -48,3 +48,27 @@ def complete(
         kwargs["system"] = system
     resp = _client().messages.create(**kwargs)
     return "".join(block.text for block in resp.content if getattr(block, "type", "") == "text").strip()
+
+
+def complete_with_search(
+    messages: list[dict],
+    model: str,
+    system: Optional[str] = None,
+    max_tokens: int = 900,
+    max_uses: int = 4,
+) -> str:
+    """Like complete(), but gives Claude the server-side web_search tool so it can
+    research live. Handles the server tool loop (pause_turn). Returns text only."""
+    client = _client()
+    tools = [{"type": "web_search_20260209", "name": "web_search", "max_uses": max_uses}]
+    base = dict(model=model, max_tokens=max_tokens, tools=tools)
+    if system:
+        base["system"] = system
+    msgs = list(messages)
+    resp = client.messages.create(messages=msgs, **base)
+    guard = 0
+    while getattr(resp, "stop_reason", "") == "pause_turn" and guard < 3:
+        msgs.append({"role": "assistant", "content": resp.content})
+        resp = client.messages.create(messages=msgs, **base)
+        guard += 1
+    return "".join(b.text for b in resp.content if getattr(b, "type", "") == "text").strip()
