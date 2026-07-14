@@ -105,6 +105,16 @@ async def debug_recent(token: str = Query(default="")) -> JSONResponse:
     })
 
 
+@app.get("/debug/slack-test")
+async def debug_slack_test(token: str = Query(default="")) -> JSONResponse:
+    """Token-gated: post a one-off message to the configured Slack channel to
+    confirm the bot token + channel + membership are wired."""
+    if not config.RB2B_WEBHOOK_TOKEN or token != config.RB2B_WEBHOOK_TOKEN:
+        return JSONResponse({"error": "invalid token"}, status_code=401)
+    result = await asyncio.to_thread(slack.send_test)
+    return JSONResponse(result, status_code=200 if result.get("ok") else 502)
+
+
 @app.post("/webhooks/rb2b")
 async def rb2b_webhook(request: Request, token: str = Query(default="")) -> Response:
     src = request.client.host if request.client else "?"

@@ -45,6 +45,18 @@ def _format(rows: Iterable) -> str:
     return "\n".join(lines)
 
 
+def send_test(text: str = "Vida · RB2B receiver — Slack wiring test. If you can see this, the digest will post here.") -> dict:
+    """Post a one-off message to confirm bot token + channel + membership."""
+    if not config.SLACK_BOT_TOKEN:
+        return {"ok": False, "error": "no SLACK_BOT_TOKEN set", "channel": config.SLACK_CHANNEL}
+    try:
+        result = _post(text)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200], "channel": config.SLACK_CHANNEL}
+    result["channel_config"] = config.SLACK_CHANNEL
+    return result
+
+
 def flush_digest() -> int:
     """Send one digest for all not-yet-notified staged leads. Returns count sent."""
     rows = store.pending_digest_rows()
