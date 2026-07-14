@@ -20,10 +20,21 @@ def _get_bool(name: str, default: bool = False) -> bool:
     return raw.lower() in ("1", "true", "yes", "on")
 
 
-# ── Secrets / credentials (supplied by Railway) ──────────────────────────────
+def _get_any(names: list[str], default: str = "") -> str:
+    """First non-empty of several accepted names (tolerates naming conventions)."""
+    for n in names:
+        v = _get(n)
+        if v:
+            return v
+    return default
+
+
+# ── Secrets / credentials (supplied by Railway or a local .env) ──────────────
 ANTHROPIC_API_KEY = _get("ANTHROPIC_API_KEY")
-AI_ARK_API_KEY = _get("AI_ARK_API_KEY")
-EMAILBISON_API_KEY = _get("EMAILBISON_API_KEY")
+# Accept both the addendum's name and the pipeline ecosystem's name.
+AI_ARK_API_KEY = _get_any(["AI_ARK_API_KEY", "AIARK_API_KEY"])
+# Vida workspace-29 key: EMAILBISON_API_KEY, or the EMAILBISON_API_KEY_<WORKSPACE> form.
+EMAILBISON_API_KEY = _get_any(["EMAILBISON_API_KEY", "EMAILBISON_API_KEY_VIDA"])
 SLACK_BOT_TOKEN = _get("SLACK_BOT_TOKEN")
 RB2B_WEBHOOK_TOKEN = _get("RB2B_WEBHOOK_TOKEN")
 
