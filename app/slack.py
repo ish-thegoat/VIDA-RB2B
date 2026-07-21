@@ -49,7 +49,7 @@ _OUTCOME_EMOJI = {
     "sent": "🟢", "staged": "🟢", "manual_review": "🟡",
     "low_intent_hold": "⏸️", "duplicate": "⏸️", "test_event": "⚪",
     "dropped_icp": "🔴", "error_push": "⛔", "error_copy": "⛔",
-    "error_campaign_active": "⛔",
+    "error_campaign_active": "⛔", "error_icp_gate": "⛔",
 }
 
 

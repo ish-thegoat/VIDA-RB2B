@@ -82,6 +82,14 @@ def process(payload: dict, dry_run: bool | None = None) -> dict:
     lead.icp_verdict = verdict.icp_verdict
     lead.segment = verdict.segment
     lead.classification_confidence = verdict.classification_confidence
+    if verdict.icp_verdict == "error_icp_gate":
+        # The classifier call itself failed (rate limit, exhausted credits, timeout)
+        # — this company was never actually evaluated. Must NOT be treated as a
+        # real ICP verdict (which would silently look like ordinary business).
+        store.log_drop("error_icp_gate", lead, detail=verdict.classification_confidence)
+        log.error("ICP gate classifier error for %s: %s", lead.company_name,
+                  verdict.classification_confidence)
+        return _finish("error_icp_gate", lead, dry, error=verdict.classification_confidence)
     if verdict.is_stop:
         store.log_drop(verdict.icp_verdict, lead,
                        detail=f"ICP gate stop (confidence={verdict.classification_confidence})")

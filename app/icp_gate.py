@@ -140,7 +140,15 @@ def classify(lead: Lead) -> Verdict:
         confidence = str(data.get("classification_confidence", "")).strip() or "low"
         return Verdict(verdict, segment, confidence)
     except Exception as e:  # never let a classifier hiccup crash the webhook worker
-        return Verdict("undefined_insufficient_data", [], f"error:{str(e)[:80]}")
+        # IMPORTANT: this is a distinct sentinel, NOT "undefined_insufficient_data".
+        # A real "insufficient data" verdict means the model looked at the company
+        # and couldn't classify it. This means the classifier call itself failed
+        # (rate limit, exhausted API credits, timeout, bad response) — the company
+        # was never actually evaluated. Conflating the two silently discards real,
+        # classifiable leads and masks outages (e.g. a billing lapse) as ordinary
+        # business. Pipeline.process() must branch on this before treating it as
+        # any kind of ICP judgment.
+        return Verdict("error_icp_gate", [], f"error:{str(e)[:300]}")
 
 
 def _parse_json(text: str) -> dict:
