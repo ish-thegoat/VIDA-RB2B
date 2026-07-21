@@ -277,6 +277,25 @@ def append_manual_review(lead) -> None:
 
 # ── Simple counters for /health and reporting ────────────────────────────────
 
+def reason_counts() -> dict:
+    with _LOCK:
+        conn = _conn()
+        rows = conn.execute(
+            "SELECT reason, COUNT(*) AS n FROM drops GROUP BY reason ORDER BY n DESC"
+        ).fetchall()
+        return {r["reason"]: r["n"] for r in rows}
+
+
+def sample_detail_for_reason(reason: str, limit: int = 5) -> list[dict]:
+    with _LOCK:
+        conn = _conn()
+        rows = conn.execute(
+            "SELECT ts, company_name, domain, captured_url, detail FROM drops "
+            "WHERE reason = ? ORDER BY id DESC LIMIT ?", (reason, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
 def counts() -> dict:
     with _LOCK:
         conn = _conn()

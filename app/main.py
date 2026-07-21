@@ -113,6 +113,17 @@ async def debug_recent(token: str = Query(default="")) -> JSONResponse:
     })
 
 
+@app.get("/debug/stats")
+async def debug_stats(token: str = Query(default="")) -> JSONResponse:
+    """Token-gated: aggregate drop reasons + sample details, to diagnose spikes
+    (e.g. an error masquerading as a real ICP verdict)."""
+    if not config.RB2B_WEBHOOK_TOKEN or token != config.RB2B_WEBHOOK_TOKEN:
+        return JSONResponse({"error": "invalid token"}, status_code=401)
+    reasons = store.reason_counts()
+    samples = {r: store.sample_detail_for_reason(r, 5) for r in reasons}
+    return JSONResponse({"counts": store.counts(), "reason_counts": reasons, "samples": samples})
+
+
 @app.get("/debug/slack-test")
 async def debug_slack_test(token: str = Query(default="")) -> JSONResponse:
     """Token-gated: post a one-off message to the configured Slack channel to

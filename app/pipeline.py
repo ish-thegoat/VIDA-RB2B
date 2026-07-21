@@ -83,7 +83,8 @@ def process(payload: dict, dry_run: bool | None = None) -> dict:
     lead.segment = verdict.segment
     lead.classification_confidence = verdict.classification_confidence
     if verdict.is_stop:
-        store.log_drop(verdict.icp_verdict, lead, detail="ICP gate stop")
+        store.log_drop(verdict.icp_verdict, lead,
+                       detail=f"ICP gate stop (confidence={verdict.classification_confidence})")
         return _finish("dropped_icp", lead, dry)
 
     # ── Captured-URL mapping (addendum §5). Cold/no-signal => hold, no copy.
