@@ -31,6 +31,12 @@ def _get_any(names: list[str], default: str = "") -> str:
 
 # ── Secrets / credentials (supplied by Railway or a local .env) ──────────────
 ANTHROPIC_API_KEY = _get("ANTHROPIC_API_KEY")
+# OpenRouter: primary LLM route when set (separate billing account from the
+# direct Anthropic key, so an Anthropic credit lapse doesn't take down the
+# pipeline). Falls back to ANTHROPIC_API_KEY automatically if unset or if a
+# request errors. Model targets the same Claude model the copy is tuned for.
+OPENROUTER_API_KEY = _get("OPENROUTER_API_KEY")
+OPENROUTER_MODEL = _get("OPENROUTER_MODEL", "anthropic/claude-sonnet-4.6")
 # Accept both the addendum's name and the pipeline ecosystem's name.
 AI_ARK_API_KEY = _get_any(["AI_ARK_API_KEY", "AIARK_API_KEY"])
 # Vida workspace-29 key: EMAILBISON_API_KEY, or the EMAILBISON_API_KEY_<WORKSPACE> form.
@@ -99,8 +105,8 @@ def missing_required(for_push: bool = True) -> list[str]:
     for_push=False checks only what's needed to classify + generate copy.
     """
     missing = []
-    if not ANTHROPIC_API_KEY:
-        missing.append("ANTHROPIC_API_KEY")
+    if not ANTHROPIC_API_KEY and not OPENROUTER_API_KEY:
+        missing.append("ANTHROPIC_API_KEY or OPENROUTER_API_KEY")
     if not RB2B_WEBHOOK_TOKEN:
         missing.append("RB2B_WEBHOOK_TOKEN")
     if for_push:

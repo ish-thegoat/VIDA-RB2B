@@ -41,6 +41,14 @@ Set these in Railway (exact names). See `.env.example`.
 **Secrets (you supply):** `ANTHROPIC_API_KEY`, `AI_ARK_API_KEY`, `EMAILBISON_API_KEY`,
 `SLACK_BOT_TOKEN`, `RB2B_WEBHOOK_TOKEN`.
 
+**LLM routing:** `OPENROUTER_API_KEY` (optional but recommended) is tried first for
+every LLM call — ICP gate, research, copy generation — on a separate billing
+account from `ANTHROPIC_API_KEY`, so a credit lapse on one doesn't take down the
+other. Falls back to Anthropic direct automatically on any OpenRouter error or if
+unset. `OPENROUTER_MODEL` (default `anthropic/claude-sonnet-4.6`) targets the same
+model the copy prompts are tuned for; OpenRouter's `:online` suffix is used for
+research so web-search grounding works on either provider.
+
 **EmailBison target:** `EMAILBISON_WORKSPACE_ID` (=29), `EMAILBISON_BASE_URL`
 (=`https://personal.buzzlead.io`), `EMAILBISON_CAMPAIGN_ID` (=792, wins over
 name), `EMAILBISON_CAMPAIGN_NAME` (=`RB2B Intent Workflow - 07/14`).
