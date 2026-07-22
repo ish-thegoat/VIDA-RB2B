@@ -124,6 +124,36 @@ async def debug_stats(token: str = Query(default="")) -> JSONResponse:
     return JSONResponse({"counts": store.counts(), "reason_counts": reasons, "samples": samples})
 
 
+@app.get("/debug/llm-check")
+async def debug_llm_check(token: str = Query(default="")) -> JSONResponse:
+    """Token-gated: report whether OPENROUTER_API_KEY/ANTHROPIC_API_KEY are visible
+    to THIS running process, and make one direct, bypass-the-fallback OpenRouter
+    call so a config problem (key not set, invalid, no credits) is distinguishable
+    from a network/provider problem."""
+    if not config.RB2B_WEBHOOK_TOKEN or token != config.RB2B_WEBHOOK_TOKEN:
+        return JSONResponse({"error": "invalid token"}, status_code=401)
+    from . import llm
+    info = {
+        "openrouter_key_set": bool(config.OPENROUTER_API_KEY),
+        "openrouter_key_len": len(config.OPENROUTER_API_KEY or ""),
+        "anthropic_key_set": bool(config.ANTHROPIC_API_KEY),
+        "openrouter_model": config.OPENROUTER_MODEL,
+    }
+    if config.OPENROUTER_API_KEY:
+        try:
+            text = await asyncio.to_thread(
+                llm._openrouter_request, "You are a test.",
+                [{"role": "user", "content": "Reply with exactly: OK"}],
+                config.OPENROUTER_MODEL, 10, 0.0,
+            )
+            info["openrouter_direct_call"] = {"ok": True, "text": text}
+        except Exception as e:
+            info["openrouter_direct_call"] = {"ok": False, "error": str(e)[:500]}
+    else:
+        info["openrouter_direct_call"] = {"ok": False, "error": "OPENROUTER_API_KEY not set in this process"}
+    return JSONResponse(info)
+
+
 @app.get("/debug/slack-test")
 async def debug_slack_test(token: str = Query(default="")) -> JSONResponse:
     """Token-gated: post a one-off message to the configured Slack channel to
