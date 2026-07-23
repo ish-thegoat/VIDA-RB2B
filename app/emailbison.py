@@ -175,6 +175,13 @@ def _clean_company(name: str) -> str:
     return cleaned
 
 
+def delete_lead(lead_id: int) -> dict:
+    """DELETE /api/leads/{id} — removes a lead entirely (not just from a
+    campaign). Used for cleaning up test/probe leads created during
+    verification; EmailBison runs the deletion async and returns immediately."""
+    return _request("DELETE", f"/api/leads/{lead_id}")
+
+
 def stage_leads(leads: list, campaign_id: int) -> dict:
     """Upsert leads then attach to the (paused) campaign. Returns a summary with
     the EmailBison lead ids so the caller can persist them."""
